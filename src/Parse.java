@@ -3,14 +3,14 @@ import java.util.HashSet;
 public class Parse {
 	HashSet<ChartEntry> chart;
 	HashSet<ChartEntry> predicted;
-	HashSet<ChartEntry> scan;
+	HashSet<ChartEntry> scanned;
 	HashSet<ChartEntry> completed;
 	HashSet<ChartEntry> allcomp;
 	HashSet<String> privileged;
 	public Parse() {
 		chart = new HashSet<ChartEntry>();
 		predicted = new HashSet<ChartEntry>();
-		scan = new HashSet<ChartEntry>();
+		scanned = new HashSet<ChartEntry>();
 		completed = new HashSet<ChartEntry>();
 		allcomp = new HashSet<ChartEntry>();
 		privileged = new HashSet<String>();
@@ -20,15 +20,14 @@ public class Parse {
 		ArrayList<String> initunseen = new ArrayList<String>();
 		initunseen.add("NP");
 		initunseen.add("VP");
-		ChartEntry initial = new ChartEntry("START", new ArrayList<String>(), initunseen, 0, 0, 1);
+		ChartEntry initial = new ChartEntry("START", new ArrayList<String>(), initunseen, 0, 0, new HashSet<ArrayList<ChartEntry>>());
 		completed.add(initial);
 		
 		privileged.add("N");
 		privileged.add("V");
 		privileged.add("P");
 		
-		int length = sentence.length;
-		for(int i = 0; i < length; i++) {
+		for(int i = 0; i < sentence.length; i++) {
 			String word = sentence[i];
 			
 			for(ChartEntry edge: completed) {
@@ -36,7 +35,7 @@ public class Parse {
 					for(Production p: grammar.productions) {
 						if (p.from.equals(edge.unseen.get(0))) {
 							for(ArrayList<String> unseen: p.to) {
-								predicted.add(new ChartEntry(edge.unseen.get(0), new ArrayList<String>(), unseen, edge.end, edge.end, edge.parseCount));
+								predicted.add(new ChartEntry(edge.unseen.get(0), new ArrayList<String>(), unseen, edge.end, edge.end, new HashSet<ArrayList<ChartEntry>>()));
 							}
 						}
 					}
@@ -46,35 +45,61 @@ public class Parse {
 			chart.addAll(completed);
 			allcomp.addAll(completed);
 			completed.clear();
-			chart.addAll(predicted);
+			
+			HashSet<ChartEntry> predictswap = new HashSet<ChartEntry>();
+			HashSet<ChartEntry> predicttotal = new HashSet<ChartEntry>();
+			while(predicted.size()>0) {
+				predicttotal.addAll(predicted);
+				for(ChartEntry predictededge: predicted) {
+					if(!privileged.contains(predictededge.unseen.get(0))) {
+						boolean recexpand = true;
+						for(ChartEntry otheredge: predicttotal) {
+							if(otheredge.head.equals(predictededge.unseen.get(0)) && privileged.contains(otheredge.unseen.get(0))) recexpand = false;
+						}
+						if(recexpand) predictswap.add(predictededge);
+					}
+				}
+				predicted.clear();
+				for(ChartEntry edge: predictswap) {
+					for(Production p: grammar.productions) {
+						if (p.from.equals(edge.unseen.get(0))) {
+							for(ArrayList<String> unseen: p.to) {
+								predicted.add(new ChartEntry(edge.unseen.get(0), new ArrayList<String>(), unseen, edge.end, edge.end, new HashSet<ArrayList<ChartEntry>>()));
+							}
+						}
+					}
+				}
+				predictswap.clear();
+			}
+			
+			chart.addAll(predicttotal);
+			predicted.addAll(predicttotal);
 			
 			for(ChartEntry predictededge: predicted) {
 				String nonterm = predictededge.unseen.get(0);
 				if(privileged.contains(nonterm) && grammar.terminalset.get(nonterm).contains(word)) {
 					boolean expand = true;
-					for(ChartEntry scanedge: scan) {
-						if(scanedge.head.equals(nonterm) && scanedge.start==predictededge.start && scanedge.end==i+1) expand = false;
+					for(ChartEntry scanedge: scanned) {
+						if(scanedge.head.equals(nonterm) && scanedge.start==predictededge.start && scanedge.end==predictededge.end+1) expand = false;
 					}
 					
 					if(expand) {
-						if (i+1 == predictededge.end+1) {
+						if (i==predictededge.end) {
 							ArrayList<String> seen = new ArrayList<String>();
 							seen.add(word);
-							scan.add(new ChartEntry(nonterm, seen, new ArrayList<String>(), predictededge.start, i+1, 1));
+							scanned.add(new ChartEntry(nonterm, seen, new ArrayList<String>(), predictededge.start, predictededge.end+1, new HashSet<ArrayList<ChartEntry>>()));
 						}
 					}
 				}
 			}
 			
-			chart.addAll(scan);
+			chart.addAll(scanned);
 			System.out.println(chart.size());
 			
-			HashSet<ChartEntry> newScan = new HashSet<ChartEntry>();
-			HashSet<ChartEntry> scanhist = new HashSet<ChartEntry>();
-			scanhist.addAll(scan);
+			HashSet<ChartEntry> scanswap = new HashSet<ChartEntry>();
 			predicted.addAll(allcomp);
-			while(scan.size()>0) {
-				for(ChartEntry scanedge: scan) {
+			while(scanned.size()>0) {
+				for(ChartEntry scanedge: scanned) {
 					for(ChartEntry predictededge: predicted) {
 						if(predictededge.unseen.size()>0 && predictededge.unseen.get(0).equals(scanedge.head) && predictededge.end==scanedge.start) {
 							String usnonterm = predictededge.unseen.get(0);
@@ -82,38 +107,46 @@ public class Parse {
 							newseen.add(usnonterm);
 							ArrayList<String> newunseen = new ArrayList<String>(predictededge.unseen);
 							newunseen.remove(0);
-							ChartEntry newEntry = new ChartEntry(predictededge.head, newseen, newunseen, predictededge.start, scanedge.end, predictededge.parseCount);
+							HashSet<ArrayList<ChartEntry>> newhist = new HashSet<ArrayList<ChartEntry>>(predictededge.histories);
+							if(newhist.size()==0) newhist.add(new ArrayList<ChartEntry>());
+							newhist.forEach(history->history.add(scanedge));
+							ChartEntry newEntry = new ChartEntry(predictededge.head, newseen, newunseen, predictededge.start, scanedge.end, newhist);
 							
 							boolean uniqueedge = true;
 							for(ChartEntry compedge: completed) {
-								if(newEntry.head.equals(compedge.head) && newEntry.seen.equals(compedge.seen) && newEntry.unseen.equals(compedge.unseen) &&
-								   newEntry.start==compedge.start && newEntry.end==compedge.end) {compedge.parseCount+=newEntry.parseCount; uniqueedge = false;}
+								if(newEntry.head.equals(compedge.head) && newEntry.seen.equals(compedge.seen) && newEntry.unseen.equals(compedge.unseen) && newEntry.start==compedge.start && newEntry.end==compedge.end) {
+									uniqueedge = false;
+								}
 							}
 							if(uniqueedge) completed.add(newEntry);
-							
-							uniqueedge = true;
-							for(ChartEntry scannededge: scanhist) {
-								if(newEntry.head.equals(scannededge.head) && newEntry.seen.equals(scannededge.seen) && 
-								   newEntry.start==scannededge.start && newEntry.end==scannededge.end) uniqueedge = false;
-							}
-							if(uniqueedge && newunseen.size()==0 && !newEntry.head.equals("START")) newScan.add(newEntry);
+							if(newunseen.size()==0 && !newEntry.head.equals("START")) scanswap.add(newEntry);
 						}
 					}
 				}
-				scan.clear();
-				scan.addAll(newScan);
-				scanhist.addAll(scan);
-				newScan.clear();
+				scanned.clear();
+				scanned.addAll(scanswap);
+				scanswap.clear();
 			}
 			predicted.clear();
-			scan.clear();
+			scanned.clear();
 		}
 		
 		chart.addAll(completed);
 		System.out.println(chart.size());
 		for(ChartEntry edge: chart) {
-			if(edge.head.equals("START") && edge.start==0 && edge.end==7) {
-				System.out.println(edge.head + " " + edge.seen + " " + edge.unseen + " " + edge.start + " " + edge.end + " " + edge.parseCount);
+			if(edge.head.equals("START") && edge.start==0 && edge.end==sentence.length) {
+				printtree(edge, 1);
+				break;
+			}
+		}
+	}
+	
+	public void printtree(ChartEntry edge, int depth) {
+		System.out.println(edge);
+		for(ArrayList<ChartEntry> history: edge.histories) {
+			for(ChartEntry histedge: history) {
+				for(int i = 0; i < depth; i++) System.out.print("       ");
+				printtree(histedge, depth+1);
 			}
 		}
 	}
@@ -121,7 +154,7 @@ public class Parse {
 	public static void main(String[] args) {
 		Parse parser = new Parse();
 		Grammar grammar = new Grammar();
-		String[] sentence = {"they", "can", "fish", "in", "rivers", "in", "december"};
+		String[] sentence = {"they", "can", "fish", "in", "rivers"};
 		parser.begin(grammar, sentence);
 	}
 }

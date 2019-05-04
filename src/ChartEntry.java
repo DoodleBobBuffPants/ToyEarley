@@ -1,20 +1,22 @@
 import java.util.ArrayList;
+import java.util.HashSet;
 public class ChartEntry {
-	static int nextID=0;
-	int ID;
 	String head;
 	ArrayList<String> seen;
 	ArrayList<String> unseen;
 	int start;
 	int end;
-	int parseCount;
-	public ChartEntry(String h, ArrayList<String> s, ArrayList<String> u, int b, int e, int pc) {
-		ID = nextID; nextID++;
+	HashSet<ArrayList<ChartEntry>> histories;
+	public ChartEntry(String h, ArrayList<String> s, ArrayList<String> u, int b, int e, HashSet<ArrayList<ChartEntry>> hist) {
 		head = h;
 		seen = new ArrayList<String>(s);
 		unseen = new ArrayList<String>(u);
 		start = b;
 		end = e;
-		parseCount = pc;
+		histories = new HashSet<ArrayList<ChartEntry>>(hist);
+	}
+	@Override
+	public String toString() {
+		return head + " " + seen + " " + unseen + " " + start + " " + end;
 	}
 }
